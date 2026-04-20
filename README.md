@@ -3,8 +3,8 @@
 A powerful B2B lead generation application built with Flutter and Supabase, leveraging AI to find potential customers based on business descriptions.
 
 ## 📺 Project Demo
-!(https://api.crazzy.dev/upload/images/RDT_20260420_065455.mp4)
-*(Replace the link above with your actual demo video URL)*
+<video src="https://api.crazzy.dev/upload/images/RDT_20260420_065455.mp4" autoplay loop muted></video>
+
 
 ## 🚀 Features
 - **AI-Powered Keyword Generation**: Uses Google Gemini to analyze business descriptions and generate effective search phrases.
