@@ -1,0 +1,165 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+
+const SERP_API_KEY = "";
+const GEMINI_API_KEY = "";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    const { businessDescription, keywordCount = 1, location = 'India' } = await req.json()
+
+    console.log(`Processing request for: "${businessDescription}" with count: ${keywordCount}`);
+
+    if (!businessDescription) {
+      throw new Error('businessDescription is required')
+    }
+
+    // 1. Generate Keywords using Gemini
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${GEMINI_API_KEY}`;
+    const prompt = `You are a specialized business coach. Your task is to find ${keywordCount} best effective phrases which are used to find customers on Google Business Profile. 
+
+Examples:
+- If user is a toy manufacturer, give best search phrases which find toy traders
+- If the business is trading or wholesaler, then give phrases to find only retailers on Google Business Profile
+- if business is raw material then give phrasee to find manufacturer related to if like if business is selling raw materail for shoe give phrase to find shoe manufacturer
+
+Remember: for manufacturer find wholesaler/traders and for wholesaler/traders/distributor find retailers
+Return only a list in this format: ["phrase1","phrase2"]
+No additional text or explanations. Important: Use double quotes for strings.
+
+Business Description: ${businessDescription}`;
+
+    const geminiResponse = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      })
+    });
+
+    if (!geminiResponse.ok) {
+      const errorText = await geminiResponse.text();
+      throw new Error(`Gemini API error: ${geminiResponse.status} - ${errorText}`);
+    }
+
+    const geminiData = await geminiResponse.json();
+    if (!geminiData.candidates || geminiData.candidates.length === 0) {
+      throw new Error('Gemini failed to generate keywords');
+    }
+
+    const llmOutput = geminiData.candidates[0].content.parts[0].text;
+    console.log(`Gemini output: ${llmOutput}`);
+    
+    // Parse keywords
+    let keywords = [];
+    try {
+      const cleanedText = llmOutput.replace(/```json|```/g, '').trim();
+      try {
+        keywords = JSON.parse(cleanedText);
+      } catch (e) {
+        keywords = JSON.parse(cleanedText.replace(/'/g, '"'));
+      }
+    } catch (e) {
+      console.error('Failed to parse keywords JSON, trying regex:', llmOutput);
+      const matches = llmOutput.match(/"([^"]+)"|'([^']+)'/g);
+      if (matches) {
+        keywords = matches.map(m => m.slice(1, -1));
+      } else {
+        keywords = [llmOutput.trim()];
+      }
+    }
+
+    if (!Array.isArray(keywords)) {
+      keywords = [String(keywords)];
+    }
+
+    console.log(`Cleaned keywords: ${JSON.stringify(keywords)}`);
+
+    // 2. Search SerpApi for each keyword
+    const allBusinesses = [];
+    const businessesByKeyword = {};
+
+    for (const keyword of keywords) {
+      // Append location to the query for better results in broad searches
+      const searchBoxQuery = `${keyword} in ${location}`;
+      console.log(`Searching SerpApi for: "${searchBoxQuery}"`);
+      
+      const params = new URLSearchParams({
+        engine: 'google_local',
+        q: searchBoxQuery,
+        location: location,
+        google_domain: 'google.co.in',
+        gl: 'in',
+        hl: 'en',
+        api_key: SERP_API_KEY
+      });
+
+      const serpUrl = `https://serpapi.com/search.json?${params.toString()}`;
+      
+      const serpResponse = await fetch(serpUrl);
+      if (!serpResponse.ok) {
+        console.error(`SerpApi error for "${keyword}": ${serpResponse.status}`);
+        businessesByKeyword[keyword] = [];
+        continue;
+      }
+
+      const serpData = await serpResponse.json();
+      
+      // Try local_results first
+      let rawResults = serpData.local_results || [];
+      
+      // Fallback to organic_results if local_results is empty
+      if (rawResults.length === 0 && serpData.organic_results) {
+        console.log(`No local results for "${keyword}", trying organic results...`);
+        rawResults = serpData.organic_results;
+      }
+
+      console.log(`Found ${rawResults.length} raw results for "${keyword}"`);
+      
+      const results = rawResults.map(item => ({
+        thumbnail: item.thumbnail || '',
+        title: item.title || '',
+        address: item.address || item.address_v2 || item.snippet || '',
+        phone: item.phone || '',
+        type: item.type || '',
+        rating: item.rating || 0,
+        reviews: item.reviews || 0,
+        reviews_original: item.reviews_original || '',
+        description: item.description || item.snippet || '',
+        hours: item.hours || '',
+      })).filter(b => b.title && (b.phone || b.address));
+
+      businessesByKeyword[keyword] = results;
+      allBusinesses.push(...results);
+    }
+
+    console.log(`Total businesses found across all keywords: ${allBusinesses.length}`);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        query: businessDescription,
+        keywords: keywords,
+        totalBusinessesFound: allBusinesses.length,
+        businessesByKeyword: businessesByKeyword,
+        allBusinesses: allBusinesses
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+
+  } catch (error) {
+    console.error(`Edge Function Error: ${error.message}`);
+    return new Response(
+      JSON.stringify({ success: false, error: error.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+    )
+  }
+})

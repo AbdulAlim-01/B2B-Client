@@ -1,0 +1,28 @@
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+class AuthService extends ChangeNotifier {
+  final supabase = Supabase.instance.client;
+
+  Future<void> signUp(String email, String password) async {
+    await supabase.auth.signUp(email: email, password: password);
+  }
+
+  Future<void> signIn(String email, String password) async {
+    await supabase.auth.signInWithPassword(email: email, password: password);
+  }
+
+  Future<void> signOut() async {
+    await supabase.auth.signOut();
+  }
+
+  Future<bool> hasBusinessProfile(String userId) async {
+    final res = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('user_id', userId)
+        .limit(1);
+
+    return (res as List).isNotEmpty;
+  }
+}
