@@ -3,7 +3,7 @@
 A powerful B2B lead generation application built with Flutter and Supabase, leveraging AI to find potential customers based on business descriptions.
 
 ## 📺 Project Demo
-[![Watch the video](https://img.youtube.com/vi/dQw4w9WgXcQ/0.jpg)](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
+[![Watch the video](https://api.crazzy.dev/upload/images/RDT_20260420_065455.mp4)](https://api.crazzy.dev/upload/images/RDT_20260420_065455.mp4)
 *(Replace the link above with your actual demo video URL)*
 
 ## 🚀 Features
